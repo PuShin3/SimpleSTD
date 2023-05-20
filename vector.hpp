@@ -41,10 +41,7 @@ public:
 	// Constructor that initialize using a initializer list
 	vector(std::initializer_list<T> list) :
 		m_size(list.size()), m_capacity(list.size()), m_data((T*)malloc(sizeof(T)* list.size())) {
-		auto ptr = list.begin();
-		for (sizet i = 0; i < list.size(); ++i, ++ptr) {
-			m_data[i] = *ptr;
-		}
+		_Fill_Range_Iter(0, list.begin(), list.end());
 	}
 
 	// Destructor
