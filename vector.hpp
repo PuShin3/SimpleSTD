@@ -2,6 +2,7 @@
 #define SSTD_VECTOR_INCLUDED
 
 #include "core.hpp"
+#include "Iterator.hpp"
 
 #include <initializer_list>
 #include <utility>
@@ -10,16 +11,33 @@
 #include <algorithm>
 #include <xmemory>
 #include <new>
+#include <utility>
 
 SSTD_BEGIN
 
 template<typename T>
+class _Vector_Iterator;
+template<typename T>
+class _Vector_Reverse_Iterator;
+template<typename T>
+class _Vector_Const_Iterator;
+template<typename T>
+class _Vector_Const_Reverse_Iterator;
+
+// This vector clone made a little change in the way it allocates memory
+// The std::vector uses new / delete aka the c++ allocator way to allocate memory
+// This sstd::vector uses malloc / realloc to get that sweet performance buff
+// 
+// This sstd::vector has about three times the speed of std::vector without reserve
+// And about two times the speed with reserve
+
+template<typename T>
 class vector {
 public:
-	class iterator;
-	class reverse_iterator;
-	class const_iterator;
-	class const_reverse_iterator;
+	using iterator = _Vector_Iterator<T>;
+	using reverse_iterator = _Vector_Reverse_Iterator<T>;
+	using const_iterator = _Vector_Const_Iterator<T>;
+	using const_reverse_iterator = _Vector_Const_Reverse_Iterator<T>;
 
 public:
 
@@ -47,15 +65,18 @@ public:
 	// Destructor
 	~vector() {
 		if (m_data) {
-			for (int i = 0; i < m_size; ++i) {
-				m_data[i].~T();
+			if (std::is_destructible<T>::value) {
+				for (int i = 0; i < m_size; ++i) {
+					m_data[i].~T();
+				}
+				free(m_data);
+				m_data = nullptr;
 			}
-			free(m_data);
-			m_data = nullptr;
 		}
 	}
 
-	SSTD_INLINE void clear() {
+	// Clear the vector. Aka call the destructor of every object and free the memory
+	SSTD_INLINE void clear() noexcept {
 		if (m_size) {
 			for (int i = 0; i < m_size; ++i) {
 				m_data[i].~T();
@@ -114,16 +135,19 @@ public:
 		m_size = new_size;
 	}
 
+	// Insert the objects in the iterator to pos
 	template<typename _Iter>
 	void insert(sizet pos, _Iter iter_beg, _Iter iter_end) {
 		_Insert_At(pos, iter_beg, iter_end);
 	}
 
+	// Insert the objects in the iterator to pos
 	template<typename _Iter>
 	void insert(iterator pos, _Iter iter_beg, _Iter iter_end) {
 		_Insert_At(pos.m_ind, iter_beg, iter_end);
 	}
 
+	// Insert the objects in the iterator to pos
 	template<typename _Iter>
 	void insert(reverse_iterator pos, _Iter iter_beg, _Iter iter_end) {
 		_Insert_At(pos.m_ind, iter_beg, iter_end);
@@ -137,28 +161,38 @@ public:
 		return m_capacity;
 	}
 
-	SSTD_INLINE SSTD_CONSTEXPR T& front() const noexcept{
-		SSTD_ASSERT(m_size >= 0);
-
+	SSTD_INLINE SSTD_CONSTEXPR T& front() noexcept {
 		return m_data[0];
 	}
-	SSTD_INLINE SSTD_CONSTEXPR T& back() const noexcept {
-		SSTD_ASSERT(m_size >= 0);
-
+	SSTD_INLINE SSTD_CONSTEXPR T& back() noexcept {
 		return m_data[m_size-1];
 	}
+	SSTD_INLINE SSTD_CONSTEXPR const T& front() const noexcept {
+		return m_data[0];
+	}
+	SSTD_INLINE SSTD_CONSTEXPR const T& back() const noexcept {
+		return m_data[m_size - 1];
+	}
+
 	SSTD_INLINE SSTD_CONSTEXPR T* data() const noexcept {
 		return m_data;
 	}
-	SSTD_INLINE T& operator[](int key) {
-		SSTD_ASSERT(key >= 0 && key < this->m_size);
 
+	SSTD_INLINE SSTD_CONSTEXPR T& at(sizet key) {
+		_Check_Range(key);
 		return this->m_data[key];
 	}
 
-	SSTD_INLINE const T& operator[](int key) const {
-		SSTD_ASSERT(key >= 0 && key < this->m_size);
+	SSTD_INLINE SSTD_CONSTEXPR const T& at(sizet key) const {
+		_Check_Range(key);
+		return this->m_data[key];
+	}
 
+	SSTD_INLINE SSTD_CONSTEXPR T& operator[](sizet key) noexcept {
+		return this->m_data[key];
+	}
+
+	SSTD_INLINE SSTD_CONSTEXPR const T& operator[](sizet key) const noexcept {
 		return this->m_data[key];
 	}
 
@@ -275,269 +309,289 @@ private:
 			_Fill_Range_Iter(pos, iter_beg, iter_end);
 		}
 	}
+
+	SSTD_INLINE void _Check_Range(sizet ind) const {
+		if (ind < 0 || ind >= m_size) {
+			std::_Xout_of_range("Vector subscript out of range");
+		}
+	}
 	
-// Iterator of vector class
+};
+
+// -----------------------------------------
+//
+//   Random access Iterator
+//
+// -----------------------------------------
+
+template<typename T>
+class _Vector_Iterator : public random_access_iterator<T> {
+	friend class vector<T>;
 public:
+	_Vector_Iterator(vector<T>* vec, sizet ind) :
+		m_vec(vec), m_ind(ind) {
 
-	// -----------------------------------------
-	//
-	//   Forward Iterator
-	//
-	// -----------------------------------------
+	}
 
-	class iterator {
-		friend class vector;
-	public:
-		iterator(vector<T>* vec, sizet ind) :
-			m_vec(vec), m_ind(ind) {
+	SSTD_INLINE _Vector_Iterator& operator++() noexcept {
+		this->m_ind++;
+		return *this;
+	}
+	SSTD_INLINE _Vector_Iterator operator++(int) noexcept {
+		_Vector_Iterator tmp = *this;
+		this->m_ind++;
+		return tmp;
+	}
+	SSTD_INLINE _Vector_Iterator& operator--() noexcept {
+		this->m_ind--;
+		return *this;
+	}
+	SSTD_INLINE _Vector_Iterator operator--(int) noexcept {
+		_Vector_Iterator tmp = *this;
+		this->m_ind--;
+		return tmp;
+	}
 
-		}
+	SSTD_INLINE _Vector_Iterator& operator+=(const sizet dis) noexcept {
+		this->m_ind += dis;
+		return *this;
+	}
+	SSTD_INLINE _Vector_Iterator operator+(const sizet dis) const noexcept {
+		return _Vector_Iterator(m_vec, m_ind + dis);
+	}
+	SSTD_INLINE _Vector_Iterator& operator-=(const sizet dis) noexcept {
+		this->m_ind -= dis;
+		return *this;
+	}
+	SSTD_INLINE _Vector_Iterator operator-(const sizet dis) const noexcept {
+		return _Vector_Iterator(m_vec, m_ind - dis);
+	}
 
-		SSTD_INLINE iterator& operator++() noexcept {
-			this->m_ind++;
-			return *this;
-		}
-		SSTD_INLINE iterator operator++(int) noexcept {
-			iterator tmp = *this;
-			this->m_ind++;
-			return tmp;
-		}
-		SSTD_INLINE iterator& operator--() noexcept {
-			this->m_ind--;
-			return *this;
-		}
-		SSTD_INLINE iterator operator--(int) noexcept {
-			iterator tmp = *this;
-			this->m_ind--;
-			return tmp;
-		}
+	SSTD_INLINE sizet operator-(const _Vector_Iterator dis) const noexcept {
+		return m_ind - dis.m_ind;
+	}
 
-		SSTD_INLINE iterator& operator+=(const sizet dis) noexcept {
-			this->m_ind += dis;
-			return *this;
-		}
-		SSTD_INLINE iterator operator+(const sizet dis) const noexcept {
-			return iterator(m_vec, m_ind + dis);
-		}
-		SSTD_INLINE iterator& operator-=(const sizet dis) noexcept {
-			this->m_ind -= dis;
-			return *this;
-		}
-		SSTD_INLINE iterator operator-(const sizet dis) const noexcept {
-			return iterator(m_vec, m_ind - dis);
-		}
+	SSTD_INLINE T& operator*() const noexcept {
+		return this->m_vec->operator[](m_ind);
+	}
+	SSTD_INLINE T& operator->() const noexcept {
+		return &this->m_vec->operator[](m_ind);
+	}
 
-		SSTD_INLINE sizet operator-(const iterator dis) const noexcept {
-			return m_ind - dis.m_ind;
-		}
+	SSTD_INLINE bool operator==(const _Vector_Iterator& other) const noexcept {
+		return this->m_vec == other.m_vec && this->m_ind == other.m_ind;
+	}
 
-		SSTD_INLINE T& operator*() const noexcept {
-			return this->m_vec->operator[](m_ind);
-		}
+	SSTD_INLINE bool operator!=(const _Vector_Iterator& other) const noexcept {
+		return this->m_vec != other.m_vec || this->m_ind != other.m_ind;
+	}
+private:
+	vector<T>* m_vec;
+	sizet m_ind;
+};
 
-		SSTD_INLINE bool operator==(const iterator& other) const noexcept {
-			return this->m_vec == other.m_vec && this->m_ind == other.m_ind;
-		}
+// -----------------------------------------
+//
+//   Reverse Random access Iterator
+//
+// -----------------------------------------
 
-		SSTD_INLINE bool operator!=(const iterator& other) const noexcept {
-			return this->m_vec != other.m_vec || this->m_ind != other.m_ind;
-		}
-	private:
-		vector<T> *m_vec;
-		sizet m_ind;
-	};
+template<typename T>
+class _Vector_Reverse_Iterator: public random_access_iterator<T> {
+	friend class vector<T>;
+public:
+	_Vector_Reverse_Iterator(vector<T>* vec, sizet ind) :
+		m_vec(vec), m_ind(ind) {
 
-	// -----------------------------------------
-	//
-	//   Reverse Iterator
-	//
-	// -----------------------------------------
+	}
 
-	class reverse_iterator {
-		friend class vector;
-	public:
-		reverse_iterator(vector<T>* vec, sizet ind) :
-			m_vec(vec), m_ind(ind) {
+	SSTD_INLINE _Vector_Reverse_Iterator& operator++() noexcept {
+		this->m_ind--;
+		return *this;
+	}
+	SSTD_INLINE _Vector_Reverse_Iterator operator++(int) noexcept {
+		_Vector_Reverse_Iterator tmp = *this;
+		this->m_ind--;
+		return tmp;
+	}
+	SSTD_INLINE _Vector_Reverse_Iterator& operator--() noexcept {
+		this->m_ind++;
+		return *this;
+	}
+	SSTD_INLINE _Vector_Reverse_Iterator operator--(int) noexcept {
+		_Vector_Reverse_Iterator tmp = *this;
+		this->m_ind++;
+		return tmp;
+	}
 
-		}
+	SSTD_INLINE _Vector_Reverse_Iterator& operator+=(const sizet dis) noexcept {
+		this->m_ind -= dis;
+		return *this;
+	}
+	SSTD_INLINE _Vector_Reverse_Iterator operator+(const sizet dis) const noexcept {
+		return _Vector_Reverse_Iterator(m_vec, m_ind - dis);
+	}
+	SSTD_INLINE _Vector_Reverse_Iterator& operator-=(const sizet dis) noexcept {
+		this->m_ind += dis;
+		return *this;
+	}
+	SSTD_INLINE _Vector_Reverse_Iterator operator-(const sizet dis) const noexcept {
+		return _Vector_Reverse_Iterator(m_vec, m_ind + dis);
+	}
 
-		SSTD_INLINE reverse_iterator& operator++() noexcept {
-			this->m_ind--;
-			return *this;
-		}
-		SSTD_INLINE reverse_iterator operator++(int) noexcept {
-			reverse_iterator tmp = *this;
-			this->m_ind--;
-			return tmp;
-		}
-		SSTD_INLINE reverse_iterator& operator--() noexcept {
-			this->m_ind++;
-			return *this;
-		}
-		SSTD_INLINE reverse_iterator operator--(int) noexcept {
-			reverse_iterator tmp = *this;
-			this->m_ind++;
-			return tmp;
-		}
+	SSTD_INLINE T& operator*() const noexcept {
+		return this->m_vec->operator[](m_ind);
+	}
+	SSTD_INLINE T& operator->() const noexcept {
+		return &this->m_vec->operator[](m_ind);
+	}
 
-		SSTD_INLINE reverse_iterator& operator+=(const sizet dis) noexcept {
-			this->m_ind -= dis;
-			return *this;
-		}
-		SSTD_INLINE reverse_iterator operator+(const sizet dis) const noexcept {
-			return reverse_iterator(m_vec, m_ind - dis);
-		}
-		SSTD_INLINE reverse_iterator& operator-=(const sizet dis) noexcept {
-			this->m_ind += dis;
-			return *this;
-		}
-		SSTD_INLINE reverse_iterator operator-(const sizet dis) const noexcept {
-			return reverse_iterator(m_vec, m_ind + dis);
-		}
+	SSTD_INLINE bool operator==(const _Vector_Reverse_Iterator& other) const noexcept {
+		return this->m_vec == other.m_vec && this->m_ind == other.m_ind;
+	}
 
-		SSTD_INLINE T& operator*() const noexcept {
-			return this->m_vec->operator[](m_ind);
-		}
+	SSTD_INLINE bool operator!=(const _Vector_Reverse_Iterator& other) const noexcept {
+		return this->m_vec != other.m_vec || this->m_ind != other.m_ind;
+	}
+private:
+	vector<T>* m_vec;
+	sizet m_ind;
+};
 
-		SSTD_INLINE bool operator==(const reverse_iterator& other) const noexcept {
-			return this->m_vec == other.m_vec && this->m_ind == other.m_ind;
-		}
+// -----------------------------------------
+//
+//   Const Random access Iterator
+//
+// -----------------------------------------
 
-		SSTD_INLINE bool operator!=(const reverse_iterator& other) const noexcept {
-			return this->m_vec != other.m_vec || this->m_ind != other.m_ind;
-		}
-	private:
-		vector<T> *m_vec;
-		sizet m_ind;
-	};
+template<typename T>
+class _Vector_Const_Iterator: public const_random_access_iterator<T> {
+	friend class vector<T>;
+public:
+	_Vector_Const_Iterator(const vector<T>* vec, sizet ind) :
+		m_vec(vec), m_ind(ind) {
 
-	// -----------------------------------------
-	//
-	//   Const Iterator
-	//
-	// -----------------------------------------
+	}
 
-	class const_iterator {
-		friend class vector;
-	public:
-		const_iterator(const vector<T>* vec, sizet ind) :
-			m_vec(vec), m_ind(ind) {
+	SSTD_INLINE _Vector_Const_Iterator& operator++() noexcept {
+		this->m_ind++;
+		return *this;
+	}
+	SSTD_INLINE _Vector_Const_Iterator operator++(int) noexcept {
+		_Vector_Const_Iterator tmp = *this;
+		this->m_ind++;
+		return tmp;
+	}
+	SSTD_INLINE _Vector_Const_Iterator& operator--() noexcept {
+		this->m_ind--;
+		return *this;
+	}
+	SSTD_INLINE _Vector_Const_Iterator operator--(int) noexcept {
+		_Vector_Const_Iterator tmp = *this;
+		this->m_ind--;
+		return tmp;
+	}
 
-		}
+	SSTD_INLINE _Vector_Const_Iterator& operator+=(const sizet dis) noexcept {
+		this->m_ind += dis;
+		return *this;
+	}
+	SSTD_INLINE _Vector_Const_Iterator operator+(const sizet dis) const noexcept {
+		return _Vector_Const_Iterator(m_vec, m_ind + dis);
+	}
+	SSTD_INLINE _Vector_Const_Iterator& operator-=(const sizet dis) noexcept {
+		this->m_ind -= dis;
+		return *this;
+	}
+	SSTD_INLINE _Vector_Const_Iterator operator-(const sizet dis) const noexcept {
+		return _Vector_Const_Iterator(m_vec, m_ind - dis);
+	}
 
-		SSTD_INLINE const_iterator& operator++() noexcept {
-			this->m_ind++;
-			return *this;
-		}
-		SSTD_INLINE const_iterator operator++(int) noexcept {
-			const_iterator tmp = *this;
-			this->m_ind++;
-			return tmp;
-		}
-		SSTD_INLINE const_iterator& operator--() noexcept {
-			this->m_ind--;
-			return *this;
-		}
-		SSTD_INLINE const_iterator operator--(int) noexcept {
-			const_iterator tmp = *this;
-			this->m_ind--;
-			return tmp;
-		}
+	SSTD_INLINE const T& operator*() const noexcept {
+		return this->m_vec->operator[](m_ind);
+	}
+	SSTD_INLINE const T& operator->() const noexcept {
+		return &this->m_vec->operator[](m_ind);
+	}
 
-		SSTD_INLINE const_iterator& operator+=(const sizet dis) noexcept {
-			this->m_ind += dis;
-			return *this;
-		}
-		SSTD_INLINE const_iterator operator+(const sizet dis) const noexcept {
-			return const_iterator(m_vec, m_ind + dis);
-		}
-		SSTD_INLINE const_iterator& operator-=(const sizet dis) noexcept {
-			this->m_ind -= dis;
-			return *this;
-		}
-		SSTD_INLINE const_iterator operator-(const sizet dis) const noexcept {
-			return const_iterator(m_vec, m_ind - dis);
-		}
+	SSTD_INLINE bool operator==(const _Vector_Const_Iterator& other) const noexcept {
+		return this->m_vec == other.m_vec && this->m_ind == other.m_ind;
+	}
 
-		SSTD_INLINE const T& operator*() const noexcept {
-			return this->m_vec->operator[](m_ind);
-		}
+	SSTD_INLINE bool operator!=(const _Vector_Const_Iterator& other) const noexcept {
+		return this->m_vec != other.m_vec || this->m_ind != other.m_ind;
+	}
+private:
+	const vector<T>* m_vec;
+	sizet m_ind;
+};
 
-		SSTD_INLINE bool operator==(const const_iterator& other) const noexcept {
-			return this->m_vec == other.m_vec && this->m_ind == other.m_ind;
-		}
+// -----------------------------------------
+//
+//   Const Reverse Random access Iterator
+//
+// -----------------------------------------
 
-		SSTD_INLINE bool operator!=(const const_iterator& other) const noexcept {
-			return this->m_vec != other.m_vec || this->m_ind != other.m_ind;
-		}
-	private:
-		const vector<T> *m_vec;
-		sizet m_ind;
-	};
+template<typename T>
+class _Vector_Const_Reverse_Iterator : public const_random_access_iterator<T> {
+	friend class vector<T>;
+public:
+	_Vector_Const_Reverse_Iterator(const vector<T>* vec, sizet ind) :
+		m_vec(vec), m_ind(ind) {
 
-	// -----------------------------------------
-	//
-	//   Const Reverse Iterator
-	//
-	// -----------------------------------------
+	}
 
-	class const_reverse_iterator {
-		friend class vector;
-	public:
-		const_reverse_iterator(const vector<T>* vec, sizet ind) :
-			m_vec(vec), m_ind(ind) {
+	SSTD_INLINE _Vector_Const_Reverse_Iterator& operator++() noexcept {
+		this->m_ind--;
+		return *this;
+	}
+	SSTD_INLINE _Vector_Const_Reverse_Iterator operator++(int) noexcept {
+		_Vector_Const_Reverse_Iterator tmp = *this;
+		this->m_ind--;
+		return tmp;
+	}
+	SSTD_INLINE _Vector_Const_Reverse_Iterator& operator--() noexcept {
+		this->m_ind++;
+		return *this;
+	}
+	SSTD_INLINE _Vector_Const_Reverse_Iterator operator--(int) noexcept {
+		_Vector_Const_Reverse_Iterator tmp = *this;
+		this->m_ind++;
+		return tmp;
+	}
 
-		}
+	SSTD_INLINE _Vector_Const_Reverse_Iterator& operator+=(const sizet dis) noexcept {
+		this->m_ind -= dis;
+		return *this;
+	}
+	SSTD_INLINE _Vector_Const_Reverse_Iterator operator+(const sizet dis) const noexcept {
+		return _Vector_Const_Reverse_Iterator(m_vec, m_ind - dis);
+	}
+	SSTD_INLINE _Vector_Const_Reverse_Iterator& operator-=(const sizet dis) noexcept {
+		this->m_ind += dis;
+		return *this;
+	}
+	SSTD_INLINE _Vector_Const_Reverse_Iterator operator-(const sizet dis) const noexcept {
+		return _Vector_Const_Reverse_Iterator(m_vec, m_ind + dis);
+	}
 
-		SSTD_INLINE const_reverse_iterator& operator++() noexcept {
-			this->m_ind--;
-			return *this;
-		}
-		SSTD_INLINE const_reverse_iterator operator++(int) noexcept {
-			const_reverse_iterator tmp = *this;
-			this->m_ind--;
-			return tmp;
-		}
-		SSTD_INLINE const_reverse_iterator& operator--() noexcept {
-			this->m_ind++;
-			return *this;
-		}
-		SSTD_INLINE const_reverse_iterator operator--(int) noexcept {
-			const_reverse_iterator tmp = *this;
-			this->m_ind++;
-			return tmp;
-		}
+	SSTD_INLINE const T& operator*() const noexcept {
+		return this->m_vec->operator[](m_ind);
+	}
+	SSTD_INLINE const T& operator->() const noexcept {
+		return &this->m_vec->operator[](m_ind);
+	}
 
-		SSTD_INLINE const_reverse_iterator& operator+=(const sizet dis) noexcept {
-			this->m_ind -= dis;
-			return *this;
-		}
-		SSTD_INLINE const_reverse_iterator operator+(const sizet dis) const noexcept {
-			return const_reverse_iterator(m_vec, m_ind - dis);
-		}
-		SSTD_INLINE const_reverse_iterator& operator-=(const sizet dis) noexcept {
-			this->m_ind += dis;
-			return *this;
-		}
-		SSTD_INLINE const_reverse_iterator operator-(const sizet dis) const noexcept {
-			return const_reverse_iterator(m_vec, m_ind + dis);
-		}
+	SSTD_INLINE bool operator==(const _Vector_Const_Reverse_Iterator& other) const noexcept {
+		return this->m_vec == other.m_vec && this->m_ind == other.m_ind;
+	}
 
-		SSTD_INLINE const T& operator*() const noexcept {
-			return this->m_vec->operator[](m_ind);
-		}
-
-		SSTD_INLINE bool operator==(const const_reverse_iterator& other) const noexcept {
-			return this->m_vec == other.m_vec && this->m_ind == other.m_ind;
-		}
-
-		SSTD_INLINE bool operator!=(const const_reverse_iterator& other) const noexcept {
-			return this->m_vec != other.m_vec || this->m_ind != other.m_ind;
-		}
-	private:
-		const vector<T> *m_vec;
-		sizet m_ind;
-	};
+	SSTD_INLINE bool operator!=(const _Vector_Const_Reverse_Iterator& other) const noexcept {
+		return this->m_vec != other.m_vec || this->m_ind != other.m_ind;
+	}
+private:
+	const vector<T>* m_vec;
+	sizet m_ind;
 };
 
 SSTD_END
