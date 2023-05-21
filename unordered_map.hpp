@@ -85,8 +85,8 @@ class _Unordered_Map_Const_Iterator;
 // This sstd::unordered_map uses open addressing
 // And this makes this sstd::unordered_map about 7 times faster than std::unordered_map 
 // when it comes to inserting
-// But these two performs the same when searching and clearing
-// Ps: sstd::unordered_map is still slightly faster than std::unordered_map
+// And about 2 times faster when it comes to erasing
+// The rest is about the same, but this sstd::unordered_map is slightly faster
 
 template<
 	typename _KeyT,	// Key type
@@ -169,8 +169,8 @@ public:
 		// Not going to do anything to it yet
 	}
 
-	SSTD_INLINE void remove(const _KeyT& key) {
-		_Remove(key);
+	SSTD_INLINE void erase(const _KeyT& key) {
+		_Erase(key);
 	}
 
 	SSTD_INLINE SSTD_CONSTEXPR sizet size() const noexcept {
@@ -260,12 +260,14 @@ private:
 			// ( Just kidding, set it to 3 so it will not trigger the reallocation until the 3rd insert )
 		}
 		++m_size;
-
+		const Decimal f = load_factor();
 		// Mantain load_factor below the max_load_factor
-		if (load_factor() >= m_max_load_factor) {
+		if (f >= m_max_load_factor) {
 			_Realloc_Table(m_capacity * 2);
 		}
-
+		if (m_size > 10000) {
+			const int fasdfdsa = 1;
+		}
 		sizet i = 0;
 		while (i != m_capacity) {
 			// Get probing index
@@ -275,6 +277,14 @@ private:
 			if (m_table[ind].available) {
 				// Acquire it
 				m_table[ind].available = false;
+
+				// Destruct it
+				if (std::is_destructible<_KeyT>::value) {
+					m_table[ind].key.~_KeyT();
+				}
+				if (std::is_destructible<_EltT>::value) {
+					m_table[ind].elt.~_EltT();
+				}
 
 				// Construct it
 				new (&m_table[ind].key) _KeyT(key);
@@ -328,12 +338,12 @@ private:
 		return end();
 	}
 
-	// Remove the key
-	SSTD_INLINE void _Remove(const _KeyT& key) {
+	// Erase the key
+	SSTD_INLINE void _Erase(const _KeyT& key) {
 		sizet i = 0;
 		while (i != m_capacity) {
 			const sizet ind = m_prob(key, i, m_capacity, m_Hasher);
-			if (m_table[ind].key == key) {
+			if (m_table[ind].key == key && !m_table[ind].available) {
 				m_table[ind].available = true;
 
 				if (std::is_destructible<_EltT>::value) {
@@ -344,6 +354,7 @@ private:
 				}
 
 				--m_size;
+				return;
 			}
 			++i;
 		}

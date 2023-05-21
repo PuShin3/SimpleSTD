@@ -117,7 +117,7 @@ void test_unordered_map() {
 	sstd::unordered_map<int, int> sstd_map;
 	std::unordered_map<int, int> std_map;
 	for (int i = 1; i <= 100; i *= 10) {
-		const sizet _Size = 500 * i;
+		const sizet _Size = 100 * i;
 		print(_Size, " elements: ");
 		timeFunc(sstd_insert, for (int i = 0; i < _Size; ++i) {
 			sstd_map.insert({ i, i });
@@ -125,6 +125,12 @@ void test_unordered_map() {
 		timeFunc(sstd_search, for (int i = 0; i < _Size; ++i) {
 			sstd_map[i] = i * 2;
 		});
+		timeFunc(sstd_erase, for (int i = 0; i < 100; ++i) {
+			sstd_map.erase(i);
+		});
+		for (int i = 0; i < _Size; ++i) {
+			sstd_map.insert({ i, i });
+		}
 		timeFunc(sstd_clear, sstd_map.clear(););
 
 		timeFunc(std_insert, for (int i = 0; i < _Size; ++i) {
@@ -133,12 +139,20 @@ void test_unordered_map() {
 		timeFunc(std_search, for (int i = 0; i < _Size; ++i) {
 			std_map[i] = i * 2;
 		});
+		timeFunc(std_erase, for (int i = 0; i < _Size; ++i) {
+			std_map.erase(i);
+		});
+		for (int i = 0; i < _Size; ++i) {
+			std_map.insert({ i, i });
+		}
 		timeFunc(std_clear, std_map.clear(););
 
 		print("		custom sstd::unordered_map	insert:			", sstd_insert, " ms");
 		print("		std::unordered_map		insert:			", std_insert, " ms\n");
 		print("		custom sstd::unordered_map	search:			", sstd_search, " ms");
 		print("		std::unordered_map		search:			", std_search, " ms\n");
+		print("		custom sstd::unordered_map	erase:			", sstd_erase, " ms");
+		print("		std::unordered_map		erase:			", std_erase, " ms\n");
 		print("		custom sstd::unordered_map	clear:			", sstd_clear, " ms");
 		print("		std::unordered_map		clear:			", std_clear, " ms\n");
 	}
