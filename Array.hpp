@@ -56,6 +56,10 @@ public:
 		}
 	}
 
+	SSTD_INLINE SSTD_CONSTEXPR sizet size() const {
+		return _Count;
+	}
+
 	// Clear the array. Aka call the destructor of every object, and reconstruct them
 	SSTD_INLINE void clear() {
 		for (sizet i = 0; i < _Count; ++i) {
