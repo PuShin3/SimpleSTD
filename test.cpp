@@ -25,7 +25,7 @@ struct v {
 	int x, y;
 	v() = default;
 	v(int i):x(i),y(i){}
-	v(v&& o) {
+	v(v&& o) noexcept {
 		x = o.x;
 		y = o.y;
 	}
@@ -56,6 +56,7 @@ struct KeyHasher
 		return m_data[k.x];
 	}
 };
+
 void test_vector() {
 	initTimeFunc();
 	sstd::vector<v> sstd_vector({ 1, 2, 3 });
@@ -64,30 +65,30 @@ void test_vector() {
 	for (int i = 0; i < 50000; ++i) {
 		boom.emplace_back(i);
 	}
-	//for (int i = 1; i <= 10; i *= 10) {
-	//	const sizet _Size = 5000000 * i;
-	//	print(_Size, " elements: ");
-	//	timeFunc(sstd_emplace, for (int i = 0; i < _Size; ++i) {
-	//		sstd_vector.emplace_back(i);
-	//	});
-	//	timeFunc(sstd_insert, sstd_vector.insert(200, boom.begin(), boom.end()););
-	//	timeFunc(sstd_clear, sstd_vector.clear(););
+	for (int i = 1; i <= 100; i *= 10) {
+		const sizet _Size = 1000000 * i;
+		print(_Size, " elements: ");
+		timeFunc(sstd_emplace, for (int i = 0; i < _Size; ++i) {
+			sstd_vector.emplace_back(i);
+		});
+		timeFunc(sstd_insert, sstd_vector.insert(200, boom.begin(), boom.end()););
+		timeFunc(sstd_clear, sstd_vector.clear(););
 
-	//	timeFunc(std_emplace, for (int i = 0; i < _Size; ++i) {
-	//		std_vector.emplace_back(i);
-	//	});
-	//	timeFunc(std_insert, std_vector.insert(std_vector.begin() + 200, boom.data(), boom.data() + 2000););
-	//	timeFunc(std_clear, std_vector.clear(););
+		timeFunc(std_emplace, for (int i = 0; i < _Size; ++i) {
+			std_vector.emplace_back(i);
+		});
+		timeFunc(std_insert, std_vector.insert(std_vector.begin() + 200, boom.data(), boom.data() + 2000););
+		timeFunc(std_clear, std_vector.clear(););
 
-	//	print("		custom sstd::vector	emplace_back:		", sstd_emplace, " ms");
-	//	print("		std::vector		emplace_back:		", std_emplace, " ms\n");
-	//	print("		custom sstd::vector	insert:			", sstd_insert, " ms");
-	//	print("		std::vector		insert:			", std_insert, " ms\n");
-	//	print("		custom sstd::vector	clear:			", sstd_clear, " ms");
-	//	print("		std::vector		clear:			", std_clear, " ms\n");
-	//}
+		print("		custom sstd::vector	emplace_back:		", sstd_emplace, " ms");
+		print("		std::vector		emplace_back:		", std_emplace, " ms\n");
+		print("		custom sstd::vector	insert:			", sstd_insert, " ms");
+		print("		std::vector		insert:			", std_insert, " ms\n");
+		print("		custom sstd::vector	clear:			", sstd_clear, " ms");
+		print("		std::vector		clear:			", std_clear, " ms\n");
+	}
 
-	for (int i = 1; i <= 10; i *= 10) {
+	/*for (int i = 1; i <= 10; i *= 10) {
 		const sizet _Size = 5000000 * i;
 		print(_Size, " elements with reserve: ");
 		sstd_vector.reserve(_Size+100000);
@@ -110,40 +111,43 @@ void test_vector() {
 		print("		std::vector		insert:			", std_insert, " ms\n");
 		print("		custom sstd::vector	clear:			", sstd_clear, " ms");
 		print("		std::vector		clear:			", std_clear, " ms");
-	}
+	}*/
 }
 void test_unordered_map() {
 	initTimeFunc();
+	int abs = 0;
 	sstd::unordered_map<int, int> sstd_map;
 	std::unordered_map<int, int> std_map;
 	for (int i = 1; i <= 100; i *= 10) {
-		const sizet _Size = 100 * i;
+		const sizet _Size = 1000 * i;
 		print(_Size, " elements: ");
-		timeFunc(sstd_insert, for (int i = 0; i < _Size; ++i) {
-			sstd_map.insert({ i, i });
-		});
-		timeFunc(sstd_search, for (int i = 0; i < _Size; ++i) {
-			sstd_map[i] = i * 2;
-		});
-		timeFunc(sstd_erase, for (int i = 0; i < 100; ++i) {
-			sstd_map.erase(i);
-		});
-		for (int i = 0; i < _Size; ++i) {
-			sstd_map.insert({ i, i });
-		}
-		timeFunc(sstd_clear, sstd_map.clear(););
+		timeFunc(sstd_insert,
+			for (int j1 = 0; j1 < _Size; ++j1) {
+				sstd_map[j1] = j1 * 2;
+			});
+		timeFunc(sstd_search,
+			for (int j2 = 0; j2 < _Size; ++j2) {
+				sstd_map.erase(j2);
+			});
+		timeFunc(sstd_erase,
+			for (int j3 = 0; j3 < _Size; ++j3) {
+				//print(j);
+				sstd_map.insert({ j3, j3 });
+			});
+		timeFunc(sstd_clear,
+			sstd_map.clear(););
 
-		timeFunc(std_insert, for (int i = 0; i < _Size; ++i) {
-			std_map.insert({ i, i });
+		timeFunc(std_insert, for (int j = 0; j < _Size; ++j) {
+			std_map.insert({ j, j });
 		});
-		timeFunc(std_search, for (int i = 0; i < _Size; ++i) {
-			std_map[i] = i * 2;
+		timeFunc(std_search, for (int j = 0; j < _Size; ++j) {
+			std_map[j] = j * 2;
 		});
-		timeFunc(std_erase, for (int i = 0; i < _Size; ++i) {
-			std_map.erase(i);
+		timeFunc(std_erase, for (int j = 0; j < _Size; ++j) {
+			std_map.erase(j);
 		});
-		for (int i = 0; i < _Size; ++i) {
-			std_map.insert({ i, i });
+		for (int j = 0; j < _Size; ++j) {
+			std_map.insert({ j, j });
 		}
 		timeFunc(std_clear, std_map.clear(););
 

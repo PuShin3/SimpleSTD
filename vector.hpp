@@ -94,7 +94,7 @@ public:
 	// By constructing it direclty into the memory, 
 	// we don't need to call any move / copy constructor.
 	template<typename ... _Val>
-	void emplace_back(_Val&& ...val) {
+	SSTD_INLINE void emplace_back(_Val&& ...val) {
 		if (m_data == nullptr) {
 			_Malloc_Data(8);
 		}
@@ -105,16 +105,16 @@ public:
 	}
 
 	// Push val to the back of the vector
-	void push_back(const T& val) {
+	SSTD_INLINE void push_back(const T& val) {
 		emplace_back(val);
 	}
 	// Push val to the back of the vector
-	void push_back(T&& val) {
+	SSTD_INLINE void push_back(T&& val) {
 		emplace_back(std::forward<T>(val));
 	}
 
 	// Reserve a certain amount of memory ( without initialization )
-	void reserve(sizet new_cap) {
+	SSTD_INLINE void reserve(sizet new_cap) {
 		m_capacity += new_cap;
 		if (m_data == nullptr) {
 			_Malloc_Data(m_capacity);
@@ -124,7 +124,7 @@ public:
 	}
 
 	// Resize the vector to new_size ( with initialization )
-	void resize(sizet new_size) {
+	SSTD_INLINE void resize(sizet new_size) {
 		if (m_data == nullptr) {
 			_Malloc_Data(new_size);
 		}
@@ -137,20 +137,35 @@ public:
 
 	// Insert the objects in the iterator to pos
 	template<typename _Iter>
-	void insert(sizet pos, _Iter iter_beg, _Iter iter_end) {
+	SSTD_INLINE void insert(sizet pos, _Iter iter_beg, _Iter iter_end) {
 		_Insert_At(pos, iter_beg, iter_end);
 	}
 
 	// Insert the objects in the iterator to pos
 	template<typename _Iter>
-	void insert(iterator pos, _Iter iter_beg, _Iter iter_end) {
+	SSTD_INLINE void insert(iterator pos, _Iter iter_beg, _Iter iter_end) {
 		_Insert_At(pos.m_ind, iter_beg, iter_end);
 	}
 
 	// Insert the objects in the iterator to pos
 	template<typename _Iter>
-	void insert(reverse_iterator pos, _Iter iter_beg, _Iter iter_end) {
+	SSTD_INLINE void insert(reverse_iterator pos, _Iter iter_beg, _Iter iter_end) {
 		_Insert_At(pos.m_ind, iter_beg, iter_end);
+	}
+
+	SSTD_INLINE void erase(const sizet& pos) {
+		_Erase(pos);
+	}
+	SSTD_INLINE void erase(const sizet& _start, const sizet& _end) {
+		_Erase_Range(_start, _end);
+	}
+	template<typename _Iter>
+	SSTD_INLINE void erase(_Iter pos) {
+		_Erase(pos.m_ind);
+	}
+	template<typename _Iter>
+	SSTD_INLINE void erase(_Iter _start, _Iter _end) {
+		_Erase_Range(_start.m_ind, _end.m_ind);
 	}
 
 	SSTD_INLINE SSTD_CONSTEXPR sizet size() const {
@@ -310,7 +325,43 @@ private:
 		}
 	}
 
-	SSTD_INLINE void _Check_Range(sizet ind) const {
+	SSTD_INLINE void _Erase(const sizet& ind) {
+		// Destruct if possible
+		if (std::is_destructible<T>::value) {
+			m_data[ind].~T();
+		}
+		// Just override it
+		if (std::is_trivially_move_constructible<T>::value) {
+			std::memmove(m_data + ind, m_data + ind + 1, sizeof(T) * (m_size - ind - 1));
+		}
+		else {
+			for (int i = pos; i < m_size; ++i) {
+				new (m_data + Dis + i) T(std::move(m_data[i]));
+			}
+		}
+		--m_size;
+	}
+
+	SSTD_INLINE void _Erase_Range(const sizet& _start, const sizet& _end) {
+		// Destruct if possible
+		for (sizet i = _start; i < _end; ++i) {
+			if (std::is_destructible<T>::value) {
+				m_data[i].~T();
+			}
+		}
+		// Just override it
+		if (std::is_trivially_move_constructible<T>::value) {
+			std::memmove(m_data + _start, m_data + _end, sizeof(T) * (m_size - _end));
+		}
+		else {
+			for (int i = pos; i < m_size; ++i) {
+				new (m_data + Dis + i) T(std::move(m_data[i]));
+			}
+		}
+		m_size-=_end - _start;
+	}
+
+	SSTD_INLINE void _Check_Range(const sizet& ind) const {
 		if (ind < 0 || ind >= m_size) {
 			std::_Xout_of_range("Vector subscript out of range");
 		}

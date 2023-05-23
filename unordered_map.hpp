@@ -3,9 +3,10 @@
 
 #include "core.hpp"
 
-#include<cmath>
+#include <cmath>
 #include <initializer_list>
 #include <utility>
+#include <ratio>
 
 SSTD_BEGIN
 
@@ -83,10 +84,11 @@ class _Unordered_Map_Const_Iterator;
 // This is a completly different implementation than the one in std
 // std::unordered_map uses close addressing / chaining
 // This sstd::unordered_map uses open addressing
-// And this makes this sstd::unordered_map about 7 times faster than std::unordered_map 
+// And this makes this sstd::unordered_map about 2 times faster than std::unordered_map 
 // when it comes to inserting
-// And about 2 times faster when it comes to erasing
-// The rest is about the same, but this sstd::unordered_map is slightly faster
+// And performs 'slightly' better than std::unordered_map for other operations
+//
+// The capacity needs to be a power of 2
 
 template<
 	typename _KeyT,	// Key type
@@ -104,13 +106,13 @@ private:
 	struct _Map_Element {
 		_KeyT key;
 		_EltT elt;
-		bool available = true;
+		bool occupied = false;
 	};
 public:
 
 	// Default constructor
 	unordered_map() {
-		_Malloc_Table(10); // just some random magic number
+		_Malloc_Table(8); // just some random magic number
 	};
 
 	// Constructor that initialize using a initializer list
@@ -123,11 +125,11 @@ public:
 		_Malloc_Table(actual_reserved_size);
 		_Load_Iterator(list.begin(), list.end());
 	}
-
+	
 	~unordered_map() {
 		// Destruct every destructable value
 		for (sizet i = 0; i < m_capacity; ++i) {
-			if (!m_table[i].available) {
+			if (m_table[i].occupied) {
 				if (std::is_destructible<_KeyT>::value) {
 					m_table[i].key.~_KeyT();
 				}
@@ -145,7 +147,7 @@ public:
 	// Basically the destructor
 	SSTD_INLINE void clear() {
 		for (sizet i = 0; i < m_capacity; ++i) {
-			if (!m_table[i].available) {
+			if (m_table[i].occupied) {
 				if (std::is_destructible<_KeyT>::value) {
 					m_table[i].key.~_KeyT();
 				}
@@ -164,13 +166,31 @@ public:
 		_Insert(key, elt); 
 		// Not going to do anything to it yet
 	}
+	SSTD_INLINE void insert(const _KeyT& key, _EltT&& elt) {
+		_Insert(key, std::move(elt));
+		// Not going to do anything to it yet
+	}
 	SSTD_INLINE void insert(const std::pair<_KeyT, _EltT>& pair) {
 		_Insert(pair.first, pair.second);
+		// Not going to do anything to it yet
+	}
+	SSTD_INLINE void insert(const _KeyT& key) {
+		_Insert(key);
 		// Not going to do anything to it yet
 	}
 
 	SSTD_INLINE void erase(const _KeyT& key) {
 		_Erase(key);
+	}
+
+	// Malloc / Realloc the additional _size
+	SSTD_INLINE void reserve(const sizet& _size) {
+		if (m_table == nullptr) {
+			_Malloc_Table(_size);
+		}
+		else {
+			_Realloc_Table(m_capacity + _size);
+		}
 	}
 
 	SSTD_INLINE SSTD_CONSTEXPR sizet size() const noexcept {
@@ -184,10 +204,11 @@ public:
 	}
 
 	// Construct a empty value into the table if the key doesn't exist
-	SSTD_INLINE _EltT& operator[](const _KeyT& key) noexcept {
+	SSTD_INLINE _EltT& operator[](const _KeyT& key) {
+		//_Print();
 		iterator ptr = _Search(key);
 		if (ptr != end()) {
-			return m_table[_Search(key).m_ind].elt;
+			return m_table[ptr.m_ind].elt;
 		}
 		iterator itr = _Insert(key, _EltT());
 		return m_table[itr.m_ind].elt;
@@ -236,70 +257,99 @@ private:
 	SSTD_INLINE void _Malloc_Table(const sizet& memsize) {
 		m_capacity = memsize;
 		m_table = (_Map_Element*)malloc(sizeof(_Map_Element) * m_capacity);
+		for (sizet i = 0; i < m_capacity; ++i) {
+			m_table[i].occupied = false;
+		}
 	}
 
 	SSTD_INLINE void _Realloc_Table(const sizet& new_size) {
-		m_capacity = new_size;
-		_Map_Element* tmp = (_Map_Element*)realloc(m_table, sizeof(_Map_Element) * m_capacity);
+		_Map_Element* tmp = (_Map_Element*)realloc(m_table, sizeof(_Map_Element) * new_size);
 
 		// Handle situations if there aren't enough memory to extend
 		if (tmp == nullptr) {
-			tmp = (_Map_Element*)malloc(sizeof(_Map_Element) * m_capacity);
-			std::copy(m_table, m_table + m_size, tmp);
-
+			tmp = (_Map_Element*)malloc(sizeof(_Map_Element) * new_size);
+			std::copy(m_table, m_table + m_capacity, tmp);
 			// Has already copyed the old data to the new memory, so the old memory is useless
 			free(m_table);
 		}
 		m_table = tmp;
+		for (sizet i = m_capacity; i < new_size; ++i) {
+			m_table[i].occupied = false;
+		}
+		m_capacity = new_size;
 	}
 
-	SSTD_INLINE iterator _Insert(const _KeyT& key, const _EltT& elt) {
+	template<typename _TE>
+	SSTD_INLINE iterator _Insert(const _KeyT& key, _TE&& elt) {
 		if (m_table == nullptr) {
-			_Malloc_Table(3);
+			_Malloc_Table(4);
 			// Yet another magic number
-			// ( Just kidding, set it to 3 so it will not trigger the reallocation until the 3rd insert )
+			// ( Just kidding, set it to 4 so it will not trigger the reallocation until the 3rd insert )
 		}
-		++m_size;
-		const Decimal f = load_factor();
 		// Mantain load_factor below the max_load_factor
-		if (f >= m_max_load_factor) {
+		if (load_factor() >= m_max_load_factor) {
 			_Realloc_Table(m_capacity * 2);
-		}
-		if (m_size > 10000) {
-			const int fasdfdsa = 1;
 		}
 		sizet i = 0;
 		while (i != m_capacity) {
 			// Get probing index
 			const sizet ind = m_prob(key, i, m_capacity, m_Hasher);
-
 			// That block is empty ( is available )
-			if (m_table[ind].available) {
+			if (!m_table[ind].occupied) {
+				++m_size;
 				// Acquire it
-				m_table[ind].available = false;
-
-				// Destruct it
-				if (std::is_destructible<_KeyT>::value) {
-					m_table[ind].key.~_KeyT();
-				}
-				if (std::is_destructible<_EltT>::value) {
-					m_table[ind].elt.~_EltT();
-				}
+				m_table[ind].occupied = true;
 
 				// Construct it
-				new (&m_table[ind].key) _KeyT(key);
+				m_table[ind].key = key;
 				new (&m_table[ind].elt) _EltT(elt);
 
 				return iterator(this, ind);
 			}
 			// Or that block has the same key
 			else if (m_table[ind].key == key) {
-				// Deconstruct it if possible
-				if (std::is_destructible<_EltT>::value) {
-					m_table[ind].elt.~_EltT();
-				}
 				// Construct it
-				new (&m_table[ind].elt) _EltT(elt);
+				new (&m_table[ind].elt) _EltT(std::move(elt));
+
+				return iterator(this, ind);
+			}
+			++i;
+		}
+		// The table is full ( which won't happen, or something is really REALLY wrong)
+		return end();
+	}
+
+	// Insert default constructor
+	SSTD_INLINE iterator _Insert(const _KeyT& key) {
+		if (m_table == nullptr) {
+			_Malloc_Table(4);
+			// Yet another magic number
+			// ( Just kidding, set it to 4 so it will not trigger the reallocation until the 3rd insert )
+		}
+		// Mantain load_factor below the max_load_factor
+		if (load_factor() >= m_max_load_factor) {
+			_Realloc_Table(m_capacity * 2);
+		}
+		sizet i = 0;
+		while (i != m_capacity) {
+			// Get probing index
+			const sizet ind = m_prob(key, i, m_capacity, m_Hasher);
+			// That block is empty ( is available )
+			if (!m_table[ind].occupied) {
+				++m_size;
+				// Acquire it
+				m_table[ind].occupied = true;
+
+				// Construct it
+				m_table[ind].key = key;
+				new (&m_table[ind].elt) _EltT();
+
+				return iterator(this, ind);
+			}
+			// Or that block has the same key
+			else if (m_table[ind].key == key) {
+				// Construct it
+				new (&m_table[ind].elt) _EltT();
 
 				return iterator(this, ind);
 			}
@@ -314,7 +364,6 @@ private:
 		while (i != m_capacity) {
 			// Get probing index
 			const sizet ind = m_prob(key, i, m_capacity, m_Hasher);
-
 			if (m_table[ind].key == key) {
 				return iterator(this, ind);
 			}
@@ -343,16 +392,14 @@ private:
 		sizet i = 0;
 		while (i != m_capacity) {
 			const sizet ind = m_prob(key, i, m_capacity, m_Hasher);
-			if (m_table[ind].key == key && !m_table[ind].available) {
-				m_table[ind].available = true;
-
+			if (m_table[ind].key == key && m_table[ind].occupied) {
+				m_table[ind].occupied = false;
 				if (std::is_destructible<_EltT>::value) {
 					m_table[ind].elt.~_EltT();
 				}
 				if (std::is_destructible<_KeyT>::value) {
 					m_table[ind].key.~_KeyT();
 				}
-
 				--m_size;
 				return;
 			}
@@ -395,7 +442,7 @@ public:
 	}
 	SSTD_INLINE _Unordered_Map_Iterator operator++(int) noexcept {
 		_Unordered_Map_Iterator tmp = *this;
-		do { this->m_ind++; } while (m_ind < m_map->m_capacity && m_map->m_table[m_ind].available);
+		do { this->m_ind++; } while (m_ind < m_map->m_capacity && !m_map->m_table[m_ind].occupied);
 		return tmp;
 	}
 
@@ -446,7 +493,7 @@ public:
 	}
 	SSTD_INLINE _Unordered_Map_Const_Iterator operator++(int) noexcept {
 		_Unordered_Map_Const_Iterator tmp = *this;
-		do { this->m_ind++; } while (m_ind < m_map->m_capacity && m_map->m_table[m_ind].available);
+		do { this->m_ind++; } while (m_ind < m_map->m_capacity && !m_map->m_table[m_ind].occupied);
 		return tmp;
 	}
 
