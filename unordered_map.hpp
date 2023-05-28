@@ -367,6 +367,9 @@ private:
 			if (m_table[ind].key == key) {
 				return iterator(this, ind);
 			}
+			else if (!m_table[ind].occupied) {
+				return end();
+			}
 			++i;
 		}
 
@@ -381,6 +384,9 @@ private:
 			const sizet ind = m_prob(key, i, m_capacity, m_Hasher);
 			if (m_table[ind].key == key) {
 				return const_iterator(this, ind);
+			}
+			else if (!m_table[ind].occupied) {
+				return end();
 			}
 			++i;
 		}

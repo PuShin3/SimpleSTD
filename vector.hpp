@@ -335,8 +335,8 @@ private:
 			std::memmove(m_data + ind, m_data + ind + 1, sizeof(T) * (m_size - ind - 1));
 		}
 		else {
-			for (int i = pos; i < m_size; ++i) {
-				new (m_data + Dis + i) T(std::move(m_data[i]));
+			for (int i = ind; i < m_capacity; ++i) {
+				new (m_data + i) T(std::move(m_data[i + 1]));
 			}
 		}
 		--m_size;
@@ -354,8 +354,9 @@ private:
 			std::memmove(m_data + _start, m_data + _end, sizeof(T) * (m_size - _end));
 		}
 		else {
-			for (int i = pos; i < m_size; ++i) {
-				new (m_data + Dis + i) T(std::move(m_data[i]));
+			const sizet Dis = _start - _end;
+			for (int i = _start; i < _end; ++i) {
+				new (m_data + i) T(std::move(m_data[i + Dis]));
 			}
 		}
 		m_size-=_end - _start;
