@@ -3,6 +3,7 @@
 
 #include "core.hpp"
 #include "Iterator.hpp"
+#include "Debug/Debug.hpp"
 
 #include <initializer_list>
 #include <utility>
@@ -153,6 +154,21 @@ public:
 		_Insert_At(pos.m_ind, iter_beg, iter_end);
 	}
 
+	// Insert the initializer_list in the iterator to pos
+	SSTD_INLINE void insert(sizet pos, std::initializer_list<T> _list) {
+		_Insert_At(pos, _list.begin(), _list.end());
+	}
+
+	// Insert the initializer_list in the iterator to pos
+	SSTD_INLINE void insert(iterator pos, std::initializer_list<T> _list) {
+		_Insert_At(pos.m_ind, _list.begin(), _list.end());
+	}
+
+	// Insert the initializer_list in the iterator to pos
+	SSTD_INLINE void insert(reverse_iterator pos, std::initializer_list<T> _list) {
+		_Insert_At(pos.m_ind, _list.begin(), _list.end());
+	}
+
 	SSTD_INLINE void erase(const sizet& pos) {
 		_Erase(pos);
 	}
@@ -193,12 +209,12 @@ public:
 		return m_data;
 	}
 
-	SSTD_INLINE SSTD_CONSTEXPR T& at(sizet key) {
+	SSTD_INLINE SSTD_CONSTEXPR T& at(const sizet& key) {
 		_Check_Range(key);
 		return this->m_data[key];
 	}
 
-	SSTD_INLINE SSTD_CONSTEXPR const T& at(sizet key) const {
+	SSTD_INLINE SSTD_CONSTEXPR const T& at(const sizet& key) const {
 		_Check_Range(key);
 		return this->m_data[key];
 	}
@@ -311,9 +327,13 @@ private:
 			// Allocate more space
 			_Realloc_Data(Total_Cap);
 		}
+		if (pos > m_size) {
+			// completly out side the 'insertable range'
+			throw std::out_of_range("Invalid insert position");
+			return;
+		}
 		if (pos < m_size) {
-			// Need to move existing objects
-			if (std::is_trivially_move_constructible<T>::value) {
+			if (false && std::is_trivially_move_constructible<T>::value) {
 				std::memmove(m_data + pos + Dis, m_data + pos, sizeof(T) * (m_size - pos));
 			}
 			else {
@@ -321,8 +341,9 @@ private:
 					new (m_data + Dis + i) T(std::move(m_data[i]));
 				}
 			}
-			_Fill_Range_Iter(pos, iter_beg, iter_end);
 		}
+		m_size += Dis;
+		_Fill_Range_Iter(pos, iter_beg, iter_end);
 	}
 
 	SSTD_INLINE void _Erase(const sizet& ind) {
@@ -364,7 +385,7 @@ private:
 
 	SSTD_INLINE void _Check_Range(const sizet& ind) const {
 		if (ind < 0 || ind >= m_size) {
-			std::_Xout_of_range("Vector subscript out of range");
+			throw std::out_of_range("Vector subscript out of range");
 		}
 	}
 	

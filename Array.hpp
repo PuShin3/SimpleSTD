@@ -23,6 +23,7 @@ class _Array_Const_Reverse_Iterator;
 
 template<typename T, sizet _Count>
 class Array {
+	SSTD_STATIC_ASSERT(_Count > 0);
 public:
 	using iterator = _Array_Iterator<T, _Count>;
 	using reverse_iterator = _Array_Reverse_Iterator<T, _Count>;
@@ -30,15 +31,14 @@ public:
 	using const_reverse_iterator = _Array_Const_Reverse_Iterator<T, _Count>;
 public:
 	// Default constructor
-	Array() SSTD_DEFAULT;
+	Array() {
+		_Fill_Range(0, _Count);
+	};
 
 	// Constructor that initialize using a initializer list
 	Array(std::initializer_list<T> _List) {
-		SSTD_ASSERT(_List.size() == _Count);
-		auto _Begin = _List.begin();
-		for(sizet i = 0; i < _Count; ++i, ++_Begin){
-			m_data[i] = std::move(*_Begin);
-		}
+		_Check_Range(_List.size()-1);
+		_Fill_Range_Iter(0, _List.begin(), _List.end());
 	}
 
 	// Constructor that set all the elements to _Val
@@ -48,15 +48,10 @@ public:
 
 	// Destructor
 	~Array() {
-		if (std::is_destructible<T>::value) {
-			for (sizet i = 0; i < _Count; ++i) {
-				m_data[i].~T();
-			}
-			free(m_data);
-		}
+
 	}
 
-	SSTD_INLINE SSTD_CONSTEXPR sizet size() const {
+	SSTD_INLINE SSTD_CONSTEXPR sizet size() const noexcept {
 		return _Count;
 	}
 
@@ -120,17 +115,17 @@ public:
 	}
 
 	SSTD_INLINE SSTD_CONSTEXPR reverse_iterator rbegin() noexcept {
-		return reverse_iterator(this, 0);
+		return reverse_iterator(this, _Count-1);
 	}
 	SSTD_INLINE SSTD_CONSTEXPR reverse_iterator rend() noexcept {
-		return reverse_iterator(this, _Count);
+		return reverse_iterator(this, -1);
 	}
 
 	SSTD_INLINE SSTD_CONSTEXPR const_reverse_iterator rbegin() const noexcept {
-		return const_reverse_iterator(this, 0);
+		return const_reverse_iterator(this, _Count - 1);
 	}
 	SSTD_INLINE SSTD_CONSTEXPR const_reverse_iterator rend() const noexcept {
-		return const_reverse_iterator(this, _Count);
+		return const_reverse_iterator(this, -1);
 	}
 
 	SSTD_INLINE SSTD_CONSTEXPR const_iterator cbegin() const noexcept {
@@ -141,17 +136,36 @@ public:
 	}
 
 	SSTD_INLINE SSTD_CONSTEXPR const_reverse_iterator crbegin() const noexcept {
-		return const_reverse_iterator(this, 0);
+		return const_reverse_iterator(this, _Count - 1);
 	}
 	SSTD_INLINE SSTD_CONSTEXPR const_iterator crend() const noexcept {
-		return const_reverse_iterator(this, _Count);
+		return const_reverse_iterator(this, -1);
 	}
 private:
 	T m_data[_Count];
 
+	SSTD_INLINE void _Fill_Range(sizet start, sizet end) {
+		for (; start < end; ++start) {
+			new (&m_data[start]) T();
+		}
+	}
+
+	SSTD_INLINE void _Fill_Range(sizet start, sizet end, const T& val) {
+		for (; start < end; ++start) {
+			m_data[start] = val;
+		}
+	}
+
+	template<typename _Iter>
+	SSTD_INLINE void _Fill_Range_Iter(sizet pos, _Iter _Start, _Iter _End) {
+		for (; pos < _Count && _Start != _End; ++pos, ++_Start) {
+			m_data[pos] = *_Start;
+		}
+	}
+
 	SSTD_INLINE void _Check_Range(sizet ind) const {
 		if (ind < 0 || ind >= _Count) {
-			std::_Xout_of_range("Array subscript out of range");
+			throw std::out_of_range("Array subscript out of range");
 		}
 	}
 };

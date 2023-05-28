@@ -18,7 +18,7 @@ SSTD_BEGIN
 
 template<typename T>
 struct _Deault_Hash{
-	SSTD_INLINE SSTD_CONSTEXPR sizet operator()(const sizet& key) const {
+	SSTD_INLINE SSTD_CONSTEXPR sizet operator()(const T& key) const {
 		return std::hash<T>::_Do_hash(key);
 	}
 };
